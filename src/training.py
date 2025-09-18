@@ -15,37 +15,50 @@ from sklearn.naive_bayes import MultinomialNB
 from sklearn.metrics import accuracy_score, classification_report
 
 DATABASE = '/home/rjoost/Maildir'
+BASEMODEL = 'bert-base-multilingual-cased'
 
-model = AutoModelForSequenceClassification.from_pretrained("bert-base-uncased",
+model = AutoModelForSequenceClassification.from_pretrained(BASEMODEL,
                                                            num_labels=2)
 # Use BERT tokenizer
-tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
+tokenizer = AutoTokenizer.from_pretrained(BASEMODEL)
+MAX_TRAINING = 500
 
 
 def load_mail_data() -> list[tuple[str, str]]:
-    db = notmuch.Database(DATABASE)
+    with notmuch.Database(DATABASE) as db:
 
-    # Example query: All emails
-    query = db.create_query(
-        'tag:spam or tag:archive')  # Or use 'tag:spam' for spam emails
+        # Example query: All emails
+        query = db.create_query('*')  # Or use 'tag:spam' for spam emails
 
-    # Iterate over the emails in the query
-    emails = []
+        # Iterate over the emails in the query
+        emails = []
 
-    count = 0
-    for msg in query.search_messages():
-        #subject = msg.get_header('subject')
-        body = [p.as_string() for p in msg.get_message_parts()]
-        labels = list(msg.get_tags())
-        classifier = 'spam' if 'spam' in labels else 'normal'
-        count += 1
-        emails.append((' '.join(body), classifier))
+        count = 0
+        spamcount = 0
+        spam = []
+        normalcount = 0
+        normal = []
+        for msg in query.search_messages():
+            # subject = msg.get_header('subject')
+            body = msg.get_message_parts()[0].as_string()
+            labels = list(msg.get_tags())
+            classifier = 'spam' if 'spam' in labels else 'normal'
+            count += 1
+            if classifier == 'spam' and not spamcount > MAX_TRAINING:
+                spamcount += 1
+                spam.append((body, classifier))
+            if classifier == 'normal' and not normalcount > MAX_TRAINING:
+                normalcount += 1
+                normal.append((body, classifier))
 
-        if count > 500:
-            break
+            if spamcount + normalcount > MAX_TRAINING * 2:
+                print(
+                    f'Gathered {normalcount} normal and {spamcount} spam mails'
+                )
+                emails = spam + normal
+                break
 
-    db.close()
-    return emails
+        return emails
 
 
 def tokenize_dataset(df: pandas.DataFrame):
@@ -166,7 +179,10 @@ if __name__ == '__main__':
     emails = load_mail_data()
     df = preprocess_mails(emails)
     train_dataset, eval_dataset = tokenize_dataset(df)
+
     trainer = create_deep_model_trainer(train_dataset, eval_dataset)
     trainer.train()
+    trainer.save_model("bert-spam-classifier-final")
+
     metrics = trainer.evaluate()
     print(metrics)
