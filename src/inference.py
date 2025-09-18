@@ -1,7 +1,19 @@
 import argparse
+from email.message import EmailMessage
 import sys
+import re
+
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 import torch
+from bs4 import BeautifulSoup
+
+
+def clean_email(raw_email: str) -> str:
+    text = BeautifulSoup(raw_email, "html.parser").get_text()
+    text = re.sub(r'(?i)(On .* wrote:|From: .*|Sent: .*|To: .*|Subject: .*)',
+                  '', text)
+    text = re.sub(r'\s+', ' ', text).strip()
+    return text
 
 
 def main(emailfile, modelpath: str):
@@ -12,15 +24,19 @@ def main(emailfile, modelpath: str):
     # Set model to evaluation mode
     model.eval()
 
-    email = emailfile.read()
-    # Tokenize
-    inputs = tokenizer(email,
+    msg = EmailMessage()
+    msg.set_content(emailfile.read())
+    rawbody = msg.get_body(preferencelist=('plain', 'html'))
+    if rawbody is None:
+        print("Unable to extract body part", file=sys.stderr)
+        sys.exit(1)
+
+    cleaned = clean_email(rawbody.get_content())
+    inputs = tokenizer(cleaned,
                        return_tensors="pt",
                        padding=True,
                        truncation=True,
                        max_length=128)
-
-    # Predict
     with torch.no_grad():
         outputs = model(**inputs)
         logits = outputs.logits

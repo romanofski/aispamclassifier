@@ -18,6 +18,7 @@
       transformers
       datasets
       accelerate
+      beautifulsoup4
     ]);
 
     # Define the dev shell environment
@@ -38,7 +39,12 @@
     };
 
   in {
-    # The dev shell for running the environment
     devShells.${system}.default = devShell;
+    apps.${system}.default = {
+      type = "app";
+      program = toString (pkgs.writeShellScript "run-classifier" ''
+        exec ${pythonEnv.interpreter} ${./src/inference.py} "$@"
+      '');
+    };
   };
 }
