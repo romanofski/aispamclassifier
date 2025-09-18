@@ -17,6 +17,7 @@
       torch
       transformers
       datasets
+      accelerate
     ]);
 
     # Define the dev shell environment
