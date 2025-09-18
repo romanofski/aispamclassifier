@@ -3,28 +3,29 @@
 
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/nixos-25.05";
-    flake-utils.url = "github:numtide/flake-utils";
   };
 
-  outputs = { self, nixpkgs, flake-utils }: flake-utils.lib.eachSystem [ "x86_64-linux" "aarch64-linux" ] (system: let
-    pythonEnv = nixpkgs.pkgs.python3.withPackages (pkgs: [
-      pkgs.python3Packages.notmuch
-      pkgs.python3Packages.scikit-learn
-      pkgs.python3Packages.nltk
-      pkgs.python3Packages.pandas
-      pkgs.python3Packages.matplotlib
-      pkgs.python3Packages.torch
-      pkgs.python3Packages.transformers
-      pkgs.python3Packages.datasets
+  outputs = { self, nixpkgs }@inputs: let
+    system = "x86_64-linux";
+    pkgs = import nixpkgs { inherit system; };
+    pythonEnv = pkgs.python3.withPackages (p: with p; [
+      notmuch
+      scikit-learn
+      nltk
+      pandas
+      matplotlib
+      torch
+      transformers
+      datasets
     ]);
 
     # Define the dev shell environment
-    devShell = nixpkgs.pkgs.mkShell {
+    devShell = pkgs.mkShell {
       buildInputs = [
         pythonEnv
-        nixpkgs.pkgs.git
-        nixpkgs.pkgs.curl
-        nixpkgs.pkgs.notmuch
+        pkgs.git
+        pkgs.curl
+        pkgs.notmuch
       ];
 
       # Set up the Python environment
@@ -38,5 +39,5 @@
   in {
     # The dev shell for running the environment
     devShells.${system}.default = devShell;
-  });
+  };
 }
