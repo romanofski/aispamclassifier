@@ -19,6 +19,7 @@
       datasets
       accelerate
       beautifulsoup4
+      langid
     ]);
 
     # Define the dev shell environment

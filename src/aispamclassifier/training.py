@@ -1,12 +1,13 @@
-import notmuch
+import argparse
+
+import torch
+from torch.nn import CrossEntropyLoss
 import pandas
-import nltk
-import re
+import notmuch
 from transformers import AutoTokenizer
 from transformers import AutoModelForSequenceClassification
 from transformers import TrainingArguments, Trainer
 from datasets import Dataset
-
 from nltk.corpus import stopwords
 from sklearn.metrics import accuracy_score, precision_recall_fscore_support
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -14,18 +15,51 @@ from sklearn.model_selection import train_test_split
 from sklearn.naive_bayes import MultinomialNB
 from sklearn.metrics import accuracy_score, classification_report
 
-DATABASE = '/home/rjoost/Maildir'
+from corpus import clean_mailcorpus
+
+
 BASEMODEL = 'bert-base-multilingual-cased'
 
 model = AutoModelForSequenceClassification.from_pretrained(BASEMODEL,
                                                            num_labels=2)
 # Use BERT tokenizer
 tokenizer = AutoTokenizer.from_pretrained(BASEMODEL)
-MAX_TRAINING = 500
+MAX_TRAINING = 1000
+
+class TrainingData:
+    emails: pandas.DataFrame
+    spamcount: int
+    hamcount: int
+
+    def __init__(self, emails: list[tuple[str, str]], spamcount: int, hamcount: int):
+        self.emails = self._preprocess_mails(emails)
+        self.spamcount = spamcount
+        self.hamcount = hamcount
+
+    def _preprocess_mails(self, emails: list[tuple[str, str]]) -> pandas.DataFrame:
+        # Convert to DataFrame for convenience
+        df = pandas.DataFrame(emails, columns=['body', 'classifier'])
+
+        df['cleaned_body'] = df['body'].apply(clean_mailcorpus)
+        return df
+
+    def get_tokenized_dataset(self):
+        return tokenize_dataset(self.emails)
+
+    def get_loss_function(self) -> CrossEntropyLoss:
+        total = self.spamcount + self.hamcount
+        weight_spam = total / (2 * self.spamcount)
+        weight_ham = total / (2 * self.hamcount)
+
+        class_weights = torch.tensor([weight_ham, weight_spam])
+        device = torch.device("cpu")
+        assigned_weights = class_weights.to(device)
+
+        return CrossEntropyLoss(weight=assigned_weights)
 
 
-def load_mail_data() -> list[tuple[str, str]]:
-    with notmuch.Database(DATABASE) as db:
+def load_mail_data(database_path: str) -> TrainingData:
+    with notmuch.Database(database_path) as db:
 
         # Example query: All emails
         query = db.create_query('*')  # Or use 'tag:spam' for spam emails
@@ -33,32 +67,27 @@ def load_mail_data() -> list[tuple[str, str]]:
         # Iterate over the emails in the query
         emails = []
 
-        count = 0
         spamcount = 0
-        spam = []
         normalcount = 0
-        normal = []
         for msg in query.search_messages():
-            # subject = msg.get_header('subject')
-            body = msg.get_message_parts()[0].as_string()
+            bytes = msg.get_message_parts()[0].get_payload(decode=True)
+            body = bytes.decode('utf-8', errors='ignore')
             labels = list(msg.get_tags())
             classifier = 'spam' if 'spam' in labels else 'normal'
-            count += 1
-            if classifier == 'spam' and not spamcount > MAX_TRAINING:
-                spamcount += 1
-                spam.append((body, classifier))
-            if classifier == 'normal' and not normalcount > MAX_TRAINING:
-                normalcount += 1
-                normal.append((body, classifier))
 
-            if spamcount + normalcount > MAX_TRAINING * 2:
+            if classifier == 'spam':
+                spamcount += 1
+            if classifier == 'normal':
+                normalcount += 1
+
+            emails.append((body, classifier))
+            if spamcount + normalcount > MAX_TRAINING:
                 print(
                     f'Gathered {normalcount} normal and {spamcount} spam mails'
                 )
-                emails = spam + normal
                 break
 
-        return emails
+        return TrainingData(emails, spamcount, normalcount)
 
 
 def tokenize_dataset(df: pandas.DataFrame):
@@ -88,31 +117,19 @@ def tokenize_dataset(df: pandas.DataFrame):
     return (train_dataset, eval_dataset)
 
 
-def preprocess_mails(emails: list[tuple[str, str]]) -> pandas.DataFrame:
-    # Convert to DataFrame for convenience
-    df = pandas.DataFrame(emails, columns=['body', 'classifier'])
+class WeightedTrainer(Trainer):
+    def __init__(self, *args, loss_fn=CrossEntropyLoss, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.loss_fn = loss_fn
 
-    nltk.download('stopwords')
-    stop_words = set(stopwords.words('english'))
+    def compute_loss(self, model, inputs, num_items_in_batch=None, return_outputs=False):
+        labels = inputs.pop('labels')
+        outputs = model(**inputs)
+        logits = outputs.logits
+        loss = self.loss_fn(logits, labels)
+        return (loss, outputs) if return_outputs else loss
 
-    # Preprocessing function to clean email text
-    def preprocess_email(text):
-        # Remove HTML tags
-        text = re.sub(r'<.*?>', '', text)
-        # Remove non-alphanumeric characters and digits
-        text = re.sub(r'[^a-zA-Z\s]', '', text)
-        # Convert to lowercase
-        text = text.lower()
-        # Remove stopwords
-        text = ' '.join(
-            [word for word in text.split() if word not in stop_words])
-        return text
-
-    df['cleaned_body'] = df['body'].apply(preprocess_email)
-    return df
-
-
-def create_deep_model_trainer(train_dataset, eval_dataset) -> Trainer:
+def create_deep_model_trainer(train_dataset, eval_dataset, loss_fn: CrossEntropyLoss) -> Trainer:
 
     def compute_metrics(eval_pred):
         logits, labels = eval_pred
@@ -140,12 +157,12 @@ def create_deep_model_trainer(train_dataset, eval_dataset) -> Trainer:
         logging_steps=10,
     )
 
-    trainer = Trainer(model=model,
+    trainer = WeightedTrainer(model=model,
                       args=training_args,
                       train_dataset=train_dataset,
                       eval_dataset=eval_dataset,
                       tokenizer=tokenizer,
-                      compute_metrics=compute_metrics)
+                      compute_metrics=compute_metrics, loss_fn=loss_fn)
     return trainer
 
 
@@ -176,11 +193,16 @@ def train_tfid_model(df: pandas.DataFrame):
 
 
 if __name__ == '__main__':
-    emails = load_mail_data()
-    df = preprocess_mails(emails)
-    train_dataset, eval_dataset = tokenize_dataset(df)
+    parser = argparse.ArgumentParser(description='classify mail/spam non spam')
+    parser.add_argument('database',
+                        type=str,)
+    args = parser.parse_args()
 
-    trainer = create_deep_model_trainer(train_dataset, eval_dataset)
+    data = load_mail_data(args.database)
+    train_dataset, eval_dataset = data.get_tokenized_dataset()
+    loss_fn = data.get_loss_function()
+
+    trainer = create_deep_model_trainer(train_dataset, eval_dataset, loss_fn)
     trainer.train()
     trainer.save_model("bert-spam-classifier-final")
 

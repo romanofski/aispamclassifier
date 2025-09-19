@@ -1,5 +1,6 @@
 import argparse
-from email.message import EmailMessage
+from email import policy
+from email.parser import BytesParser
 import sys
 import re
 
@@ -7,6 +8,7 @@ from transformers import AutoTokenizer, AutoModelForSequenceClassification
 import torch
 from bs4 import BeautifulSoup
 
+from corpus import clean_mailcorpus
 
 def clean_email(raw_email: str) -> str:
     text = BeautifulSoup(raw_email, "html.parser").get_text()
@@ -24,14 +26,14 @@ def main(emailfile, modelpath: str):
     # Set model to evaluation mode
     model.eval()
 
-    msg = EmailMessage()
-    msg.set_content(emailfile.read())
+    msg = BytesParser(policy=policy.default).parse(emailfile)
     rawbody = msg.get_body(preferencelist=('plain', 'html'))
     if rawbody is None:
         print("Unable to extract body part", file=sys.stderr)
         sys.exit(1)
 
-    cleaned = clean_email(rawbody.get_content())
+    cleaned = clean_mailcorpus(rawbody.get_content())
+    print(f'{cleaned}')
     inputs = tokenizer(cleaned,
                        return_tensors="pt",
                        padding=True,
@@ -48,9 +50,7 @@ def main(emailfile, modelpath: str):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='classify mail/spam non spam')
     parser.add_argument('emailfile',
-                        nargs='?',
-                        type=argparse.FileType('r'),
-                        default=sys.stdin)
+                        type=argparse.FileType('rb'))
     parser.add_argument('--modelpath', type=str, required=True)
 
     args = parser.parse_args()
