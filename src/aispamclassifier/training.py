@@ -15,7 +15,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.naive_bayes import MultinomialNB
 from sklearn.metrics import accuracy_score, classification_report
 
-from corpus import clean_mailcorpus
+from aispamclassifier.corpus import clean_mailcorpus
 
 
 BASEMODEL = 'bert-base-multilingual-cased'
@@ -191,8 +191,7 @@ def train_tfid_model(df: pandas.DataFrame):
     print("Accuracy:", accuracy_score(y_test, y_pred))
     print("Classification Report:\n", classification_report(y_test, y_pred))
 
-
-if __name__ == '__main__':
+def main():
     parser = argparse.ArgumentParser(description='classify mail/spam non spam')
     parser.add_argument('database',
                         type=str,)
@@ -208,3 +207,7 @@ if __name__ == '__main__':
 
     metrics = trainer.evaluate()
     print(metrics)
+
+
+if __name__ == '__main__':
+    main()

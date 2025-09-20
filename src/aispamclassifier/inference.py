@@ -8,7 +8,7 @@ from transformers import AutoTokenizer, AutoModelForSequenceClassification
 import torch
 from bs4 import BeautifulSoup
 
-from corpus import clean_mailcorpus
+from aispamclassifier.corpus import clean_mailcorpus
 
 def clean_email(raw_email: str) -> str:
     text = BeautifulSoup(raw_email, "html.parser").get_text()
@@ -18,7 +18,7 @@ def clean_email(raw_email: str) -> str:
     return text
 
 
-def main(emailfile, modelpath: str):
+def detect_spam_or_ham(emailfile, modelpath: str):
     # Load tokenizer and model from saved directory
     tokenizer = AutoTokenizer.from_pretrained(modelpath)
     model = AutoModelForSequenceClassification.from_pretrained(modelpath)
@@ -47,11 +47,15 @@ def main(emailfile, modelpath: str):
     print("Spam" if predicted_class == 1 else "Normal")
 
 
-if __name__ == '__main__':
+def main():
     parser = argparse.ArgumentParser(description='classify mail/spam non spam')
     parser.add_argument('emailfile',
                         type=argparse.FileType('rb'))
     parser.add_argument('--modelpath', type=str, required=True)
 
     args = parser.parse_args()
-    main(**args.__dict__)
+    detect_spam_or_ham(**args.__dict__)
+
+
+if __name__ == '__main__':
+    main()

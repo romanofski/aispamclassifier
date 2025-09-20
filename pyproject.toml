@@ -1,0 +1,31 @@
+[tool.poetry.dependencies]
+python = "3.11.*"
+
+[tool.poetry]
+name = "aispamclassifier"
+description = "A tool to classify spam/ham using an ML model"
+version = "1.0.0"
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aispamclassifier"
+dependencies = [
+    "notmuch",
+    "scikit-learn",
+    "nltk",
+    "pandas",
+    "matplotlib",
+    "torch (==2.7.1)",
+    "transformers (==4.55.3)",
+    "datasets",
+    "accelerate",
+    "beautifulsoup4",
+    "langid",
+]
+
+[project.scripts]
+train = "aispamclassifier.training:main"
+inference = "aispamclassifier.inference:main"
