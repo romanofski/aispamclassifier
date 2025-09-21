@@ -1,4 +1,6 @@
 import argparse
+import pathlib
+import io
 from email import policy
 from email.parser import BytesParser
 import sys
@@ -18,7 +20,7 @@ def clean_email(raw_email: str) -> str:
     return text
 
 
-def detect_spam_or_ham(emailfile, modelpath: str):
+def detect_spam_or_ham(emailfile: io.BufferedReader, modelpath: str | pathlib.Path) -> str:
     # Load tokenizer and model from saved directory
     tokenizer = AutoTokenizer.from_pretrained(modelpath)
     model = AutoModelForSequenceClassification.from_pretrained(modelpath)
@@ -44,7 +46,7 @@ def detect_spam_or_ham(emailfile, modelpath: str):
         logits = outputs.logits
         predicted_class = torch.argmax(logits, dim=1).item()
 
-    print("Spam" if predicted_class == 1 else "Normal")
+    return "Spam" if predicted_class == 1 else "Normal"
 
 
 def main():
@@ -54,8 +56,8 @@ def main():
     parser.add_argument('--modelpath', type=str, required=True)
 
     args = parser.parse_args()
-    detect_spam_or_ham(**args.__dict__)
-
+    label = detect_spam_or_ham(**args.__dict__)
+    print(label)
 
 if __name__ == '__main__':
     main()
