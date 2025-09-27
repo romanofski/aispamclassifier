@@ -20,11 +20,9 @@ def clean_email(raw_email: str) -> str:
     return text
 
 
-def detect_spam_or_ham(emailfile: io.BufferedReader, modelpath: str | pathlib.Path) -> str:
-    # Load tokenizer and model from saved directory
-    tokenizer = AutoTokenizer.from_pretrained(modelpath)
-    model = AutoModelForSequenceClassification.from_pretrained(modelpath)
-
+def detect_spam_or_ham(emailfile: io.BufferedReader, tokenizer:
+                       AutoTokenizer, model:
+                       AutoModelForSequenceClassification) -> str:
     # Set model to evaluation mode
     model.eval()
 
@@ -53,10 +51,13 @@ def main():
     parser = argparse.ArgumentParser(description='classify mail/spam non spam')
     parser.add_argument('emailfile',
                         type=argparse.FileType('rb'))
-    parser.add_argument('--modelpath', type=str, required=True)
+    parser.add_argument('--modelpath', type=pathlib.Path, required=True)
 
     args = parser.parse_args()
-    label = detect_spam_or_ham(**args.__dict__)
+
+    tokenizer = AutoTokenizer.from_pretrained(args.modelpath)
+    model = AutoModelForSequenceClassification.from_pretrained(args.modelpath)
+    label = detect_spam_or_ham(args.emailfile, tokenizer=tokenizer, model=model)
     print(label)
 
 if __name__ == '__main__':

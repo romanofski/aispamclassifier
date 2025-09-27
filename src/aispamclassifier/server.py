@@ -2,16 +2,17 @@ import socket
 import sys
 import os
 import pathlib
+import argparse
 
+from transformers import AutoTokenizer, AutoModelForSequenceClassification
 from aispamclassifier.inference import detect_spam_or_ham
 
 SOCKET_PATH = pathlib.Path(f'/run/user/{os.getuid()}/aispamclassifier.sock')
-MODEL_PATH = pathlib.Path(os.environ.get('AISPAMCLASSIFIER_MODEL', ''))
+MODEL_PATH_ENV_VAR_NAME = 'AISPAMCLASSIFIER_MODEL'
 
-def main():
-    if not MODEL_PATH.exists():
-        print(f'Unable to find model under: {MODEL_PATH}. Exiting')
-        sys.exit(1)
+def serve(modelpath: str):
+    tokenizer = AutoTokenizer.from_pretrained(modelpath)
+    model = AutoModelForSequenceClassification.from_pretrained(modelpath)
 
     if SOCKET_PATH.exists():
         SOCKET_PATH.unlink()
@@ -27,5 +28,36 @@ def main():
             connection, _ = server.accept()
             with connection:
                 socket_stream = connection.makefile('rb')
-                label = detect_spam_or_ham(socket_stream, MODEL_PATH)
-                connection.sendall(label.encode('utf-8'))
+                label = detect_spam_or_ham(socket_stream,
+                                           tokenizer=tokenizer,
+                                           model=model)
+                try:
+                    connection.sendall(label.encode('utf-8'))
+                except BrokenPipeError:
+                    print('Client closed connection before we could answer')
+
+def valid_directory(path_str: str):
+    path = pathlib.Path(path_str)
+    if not path.is_dir():
+        raise argparse.ArgumentTypeError(f"'{path}' not a directory")
+    if not path.exists():
+        raise argparse.ArgumentTypeError(f"'{path}' does not exist")
+    return path
+
+def main():
+    parser = argparse.ArgumentParser(description='classify mail/spam non spam')
+    parser.add_argument('--modelpath', type=valid_directory)
+
+    args = parser.parse_args()
+    if args.modelpath is None:
+        modelpath = os.getenv(MODEL_PATH_ENV_VAR_NAME)
+        if modelpath is None:
+            parser.error(
+            f"Tried to load model from {MODEL_PATH_ENV_VAR_NAME} but found it not set.")
+        args.modelpath = valid_directory(modelpath)
+
+    serve(**args.__dict__)
+
+
+if __name__ == '__main__':
+    main()
