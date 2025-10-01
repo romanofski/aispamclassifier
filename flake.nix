@@ -65,6 +65,7 @@
         lockFileOverlay
         pyprojectOverlay
         buildSystemOverlay
+        editableOverlay
       ]);
 
       venv = pythonSet.mkVirtualEnv "aispamclassifier" workspace.deps.default;
@@ -73,6 +74,7 @@
         packages = [ venv pkgs.uv ];
         env = {
           UV_NO_SYNC = "1";
+          UV_PROJECT_ENVIRONMENT = venv;
           UV_PYTHON = pythonSet.python.interpreter;
           UV_PYTHON_DOWNLOADS = "never";
         };
