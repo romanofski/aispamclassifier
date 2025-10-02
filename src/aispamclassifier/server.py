@@ -6,8 +6,8 @@ import argparse
 
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 from aispamclassifier.inference import detect_spam_or_ham
+from aispamclassifier.config import SOCKET_PATH
 
-SOCKET_PATH = pathlib.Path(f'/run/user/{os.getuid()}/aispamclassifier.sock')
 MODEL_PATH_ENV_VAR_NAME = 'AISPAMCLASSIFIER_MODEL'
 
 def serve(modelpath: str):
