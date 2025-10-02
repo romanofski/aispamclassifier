@@ -29,9 +29,8 @@
       lib = pkgs.lib;
       # python 3.11
       python = pkgs.python312;
-      pyproject-packages =
+      pythonBase =
         pkgs.callPackage pyproject-nix.build.packages { inherit python; };
-      pyproject-util = pkgs.callPackage pyproject-nix.build.util { };
 
       workspace = uv2nix.lib.workspace.loadWorkspace { workspaceRoot = ./.; };
       # bro I know you like overlays ...
@@ -60,22 +59,24 @@
         };
       };
 
-      pythonSet = pyproject-packages.overrideScope (lib.composeManyExtensions [
+      pythonSet = pythonBase.overrideScope (lib.composeManyExtensions [
         pyproject-build-systems.overlays.default
         lockFileOverlay
         pyprojectOverlay
         buildSystemOverlay
+      ]);
+      editablePythonSet = pythonSet.overrideScope (lib.composeManyExtensions [
         editableOverlay
       ]);
 
-      venv = pythonSet.mkVirtualEnv "aispamclassifier" workspace.deps.default;
+      venv = editablePythonSet.mkVirtualEnv "aispamclassifier" workspace.deps.default;
       # Define the dev shell environment
       devShell = pkgs.mkShell {
         packages = [ venv pkgs.uv ];
         env = {
           UV_NO_SYNC = "1";
           UV_PROJECT_ENVIRONMENT = venv;
-          UV_PYTHON = pythonSet.python.interpreter;
+          UV_PYTHON = editablePythonSet.python.interpreter;
           UV_PYTHON_DOWNLOADS = "never";
         };
         shellHook = ''
@@ -84,13 +85,17 @@
           . ${venv}/bin/activate
         '';
       };
-
+      pyproject-util = pkgs.callPackage pyproject-nix.build.util {};
     in {
-      packages.${system}.default = venv;
+      packages.${system}.default = pyproject-util.mkApplication {
+        venv = pythonSet.mkVirtualEnv "aispamclassifier" workspace.deps.default;
+        package = pythonSet.aispamclassifier;
+      };
       devShells.${system}.default = devShell;
-      apps.${system}.default = {
+      apps.${system}.server = {
         type = "app";
-        program = "${venv}bin/training";
+        description = "socket server accepting emails";
+        program = "${venv}bin/server";
       };
     };
 }
