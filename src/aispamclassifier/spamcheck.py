@@ -1,24 +1,50 @@
 import sys
 import argparse
 import socket
+import io
+import email
+from email import policy
+from email.generator import BytesGenerator
 
 from aispamclassifier.config import SOCKET_PATH
 
-def main():
-    parser = argparse.ArgumentParser(description='classify mail/spam non spam')
-    parser.add_argument('emailfile',
-                        type=argparse.FileType('rb'))
-    args = parser.parse_args()
+DEFAULT_HEADER='X-AI-Spam'
 
+def classify(rawbody: bytes) -> str:
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
         client.settimeout(5)
         client.connect(str(SOCKET_PATH))
-        client.sendall(args.emailfile.read())
+        client.sendall(rawbody)
         client.shutdown(socket.SHUT_WR)
 
         response = client.recv(1024).decode().strip()
-        print(response.lower())
+        return response.lower()
 
+def main():
+    parser = argparse.ArgumentParser(description='classify mail/spam non spam')
+    parser.add_argument('emailfile', nargs='?',
+                        type=argparse.FileType('rb'), default=sys.stdin)
+    parser.add_argument('--result-action', choices=('tag', 'print'),
+                        default='tag', help='Print the classified result instead of changing the email to set a header')
+    args = parser.parse_args()
+
+    msg = email.message_from_file(args.emailfile, policy=policy.default)
+    with io.BytesIO() as buf:
+        BytesGenerator(buf).flatten(msg)
+        raw_bytes = buf.getvalue()
+
+    result = classify(raw_bytes)
+
+    if args.result_action == 'print':
+        print(result)
+        sys.exit(0)
+
+    msg.add_header(DEFAULT_HEADER, result)
+
+    with io.BytesIO() as output:
+        BytesGenerator(output).flatten(msg)
+        sys.stdout.buffer.write(output.getvalue())
+        sys.exit(0)
 
 if __name__ == "__main__":
     main()
