@@ -28,7 +28,7 @@ def main():
                         default='tag', help='Print the classified result instead of changing the email to set a header')
     args = parser.parse_args()
 
-    msg = email.message_from_binary_file(args.emailfile, policy=policy.default)
+    msg = email.message_from_file(args.emailfile, policy=policy.default)
     with io.BytesIO() as buf:
         BytesGenerator(buf).flatten(msg)
         raw_bytes = buf.getvalue()
