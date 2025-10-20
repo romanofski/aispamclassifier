@@ -44,7 +44,7 @@ def handle_email(emailfile: BinaryIO, action: ResultAction, out: BinaryIO=sys.st
 def main():
     parser = argparse.ArgumentParser(description='classify mail/spam non spam')
     parser.add_argument('emailfile', nargs='?',
-                        type=argparse.FileType('rb'), default=sys.stdin)
+                        type=argparse.FileType('rb'), default=sys.stdin.buffer)
     parser.add_argument('--result-action', choices=('tag', 'print'),
                         default='tag', help='Print the classified result instead of changing the email to set a header')
     args = parser.parse_args()
