@@ -32,7 +32,12 @@ def detect_spam_or_ham(emailfile: io.BufferedReader, tokenizer:
         print("Unable to extract body part", file=sys.stderr)
         sys.exit(1)
 
-    cleaned = clean_mailcorpus(rawbody.get_content())
+    try:
+        cleaned = clean_mailcorpus(rawbody.get_content())
+    except LookupError as err:
+        print(err, file=sys.stderr)
+        return 'Spam'
+
     print(f'{cleaned}')
     inputs = tokenizer(cleaned,
                        return_tensors="pt",
